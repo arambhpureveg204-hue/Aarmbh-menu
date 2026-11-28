@@ -264,6 +264,21 @@
             box-shadow: 0 4px 12px rgba(217,119,6,0.25);
             margin-top: 4px;
         }
+        .new-order-btn {
+            width: 100%; background: #0f172a; color: #fff;
+            border: 2px solid #d97706; padding: 13px; border-radius: 12px;
+            font-size: 15px; font-weight: 900; cursor: pointer;
+            margin-top: 10px;
+        }
+        .cancel-order-btn {
+            background: #fee2e2; color: #b91c1c;
+            border: 1.5px solid #ef4444; padding: 7px 12px;
+            border-radius: 9px; font-size: 12px; font-weight: 800;
+            cursor: pointer; margin-top: 10px; width: 100%;
+        }
+        .cancel-order-btn:disabled {
+            opacity: 0.5; cursor: not-allowed;
+        }
 
         /* MENU CONTROLS & CARDS */
         .menu-section { display: block; }
@@ -490,6 +505,7 @@
         <div id="my-orders-waiter-box"></div>
         <div id="my-orders-container"></div>
         <button id="add-more-btn" class="add-more-btn" onclick="switchView('menu')">+ अजून आयटम जोडा</button>
+        <button id="new-order-btn" class="new-order-btn" onclick="startNewOrder()">🆕 नवीन ऑर्डर टाका (New Order)</button>
     </section>
 
     <!-- FULL MENU VIEW -->
@@ -570,6 +586,11 @@
                 tabOrders: 'माझी ऑर्डर',
                 tabMenu: 'पूर्ण मेनू',
                 addMore: '+ अजून आयटम जोडा (पूर्ण मेनू पहा)',
+                newOrderBtn: '🆕 नवीन ऑर्डर टाका (New Order)',
+                cancelOrderBtn: '❌ ही ऑर्डर रद्द करा (Cancel Order)',
+                cancelConfirm: 'तुम्हाला नक्की ही ऑर्डर रद्द (Cancel) करायची आहे का?',
+                cancellingOrder: '⏳ ऑर्डर रद्द करत आहे...',
+                stCancelled: '🚫 ग्राहकाने रद्द केली',
                 viewOrder: 'ऑर्डर पहा ➔',
                 itemsSelected: 'आयटम निवडले',
                 yourOrder: 'तुमची ऑर्डर',
@@ -651,6 +672,11 @@
                 tabOrders: 'मेरा ऑर्डर',
                 tabMenu: 'पूरा मेनू',
                 addMore: '+ और आइटम जोड़ें (पूरा मेनू देखें)',
+                newOrderBtn: '🆕 नया ऑर्डर डालें (New Order)',
+                cancelOrderBtn: '❌ यह ऑर्डर रद्द करें (Cancel Order)',
+                cancelConfirm: 'क्या आप वाकई इस ऑर्डर को रद्द (Cancel) करना चाहते हैं?',
+                cancellingOrder: '⏳ ऑर्डर रद्द किया जा रहा है...',
+                stCancelled: '🚫 ग्राहक द्वारा रद्द',
                 viewOrder: 'ऑर्डर देखें ➔',
                 itemsSelected: 'आइटम चुने',
                 yourOrder: 'आपका ऑर्डर',
@@ -731,6 +757,11 @@
                 tabOrders: 'My Orders',
                 tabMenu: 'Full Menu',
                 addMore: '+ Add More Items (Full Menu)',
+                newOrderBtn: '🆕 Place New Order',
+                cancelOrderBtn: '❌ Cancel This Order',
+                cancelConfirm: 'Are you sure you want to cancel this order?',
+                cancellingOrder: '⏳ Cancelling Order...',
+                stCancelled: '🚫 Cancelled by Customer',
                 viewOrder: 'View Order ➔',
                 itemsSelected: 'items selected',
                 yourOrder: 'Your Order',
@@ -866,6 +897,7 @@
             document.getElementById('tab-orders-label').innerText = t('tabOrders');
             document.getElementById('tab-menu-label').innerText = t('tabMenu');
             document.getElementById('add-more-btn').innerText = t('addMore');
+            document.getElementById('new-order-btn').innerText = t('newOrderBtn');
             document.getElementById('cart-bar-btn').innerText = t('viewOrder');
             document.getElementById('modal-cart-title').innerText = t('yourOrder');
             document.getElementById('modal-total-label').innerText = t('grandTotal');
@@ -1018,7 +1050,7 @@
             const combined = [];
             Object.values(cart).forEach(i => combined.push(i));
             myOrders.forEach(o => {
-                if (o.status !== 'REJECTED' && Array.isArray(o.items)) {
+                if (o.status !== 'REJECTED' && o.status !== 'CANCELLED' && Array.isArray(o.items)) {
                     o.items.forEach(i => combined.push(i));
                 }
             });
@@ -1368,11 +1400,12 @@
 
             let grandAll = 0;
             const cardsHtml = myOrders.map((ord, idx) => {
-                if (ord.status !== 'REJECTED') grandAll += (Number(ord.total) || 0);
+                if (ord.status !== 'REJECTED' && ord.status !== 'CANCELLED') grandAll += (Number(ord.total) || 0);
 
                 let stClass = 'st-pending', stText = t('stPending');
                 if (ord.status === 'ACCEPTED') { stClass = 'st-accepted'; stText = t('stAccepted'); }
                 else if (ord.status === 'REJECTED') { stClass = 'st-rejected'; stText = t('stRejected'); }
+                else if (ord.status === 'CANCELLED') { stClass = 'st-rejected'; stText = t('stCancelled'); }
 
                 const rows = (ord.items || []).map(i => {
                     const full = menuItems.find(m => m.id === i.id) || i;
@@ -1381,6 +1414,10 @@
                         <span><b>₹${i.price * i.qty}</b></span>
                     </div>`;
                 }).join('');
+
+                const cancelBtnHtml = (ord.status === 'PENDING')
+                    ? `<button id="cancel-btn-${escapeHTML(ord.key)}" class="cancel-order-btn" onclick="cancelCustomerOrder('${escapeHTML(ord.key)}')">${t('cancelOrderBtn')}</button>`
+                    : '';
 
                 return `
                     <div class="my-order-card">
@@ -1396,6 +1433,7 @@
                             <span>${t('orderAmt')}</span>
                             <span style="color:#b45309; font-size:17px;">₹${ord.total || 0}</span>
                         </div>
+                        ${cancelBtnHtml}
                     </div>
                 `;
             }).join('');
@@ -1408,6 +1446,49 @@
                 : '';
 
             container.innerHTML = summaryHtml + cardsHtml;
+        }
+
+        function cancelCustomerOrder(orderKey) {
+            if (!orderKey) return;
+            if (!confirm(t('cancelConfirm'))) return;
+
+            const btn = document.getElementById('cancel-btn-' + orderKey);
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = t('cancellingOrder');
+            }
+
+            db.ref('qr_orders/' + orderKey).update({
+                status: 'CANCELLED',
+                cancelledBy: 'CUSTOMER',
+                cancelledAt: Date.now()
+            }).then(() => {
+                const remainingActive = myOrders.filter(o =>
+                    o.key !== orderKey && o.status !== 'REJECTED' && o.status !== 'CANCELLED'
+                );
+                if (remainingActive.length === 0) {
+                    db.ref('table_locks/' + currentTable).remove().catch(() => {});
+                }
+            }).catch(() => {
+                alert(t('alertNetErr'));
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = t('cancelOrderBtn');
+                }
+            });
+        }
+
+        function startNewOrder() {
+            cart = {};
+            selectedSection = 'ALL';
+            const searchEl = document.getElementById('search-input');
+            if (searchEl) searchEl.value = '';
+            renderSmartHub();
+            renderCategories();
+            renderMenu();
+            updateCartBar();
+            renderWaiterBoxes();
+            switchView('menu');
         }
 
         setInterval(() => {
